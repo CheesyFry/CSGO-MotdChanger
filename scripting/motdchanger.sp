@@ -11,7 +11,7 @@ public Plugin myinfo =
 	name = "MOTD Changer",
 	author = "Neuro Toxin",
 	description = "Allows plugins to change the MOTD URL",
-	version = "0.0.1",
+	version = "0.0.2",
 	url = ""
 }
 
@@ -56,7 +56,7 @@ public Action OnClientVGUIMenuRequired(Handle timer, any userid)
 	if(client == 0)
 		return Plugin_Continue;
 		
-	char url[512];
+	char url[1024];
 
 	Call_StartForward(g_hOnGetClientVGUIUrl);
 	Call_PushCell(client);

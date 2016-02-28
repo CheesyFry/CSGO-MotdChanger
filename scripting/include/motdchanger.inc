@@ -3,4 +3,4 @@
 #endif
 #define _motdchanger_included_
 
-forward void OnGetClientVGUIUrl(int client, char url[512]);
+forward void OnGetClientVGUIUrl(int client, char url[1024]);
