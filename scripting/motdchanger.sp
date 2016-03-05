@@ -8,10 +8,10 @@ static bool s_bClientRequiresVGUIMenu[MAXPLAYERS+1];
 
 public Plugin myinfo =
 {
-	name = "Client MOTD Changer",
+	name = "MOTD Changer",
 	author = "Neuro Toxin",
-	description = "Allows plugins to change a clients MOTD URL.",
-	version = "0.0.3",
+	description = "Allows plugins to change the MOTD URL",
+	version = "0.0.2",
 	url = ""
 }
 
@@ -45,15 +45,26 @@ public Action OnVGUIMenu(UserMsg msg_id, Handle bf, const int[] players, int pla
 		return Plugin_Continue;
 	
 	s_bClientRequiresVGUIMenu[client] = false;
+	CreateTimer(0.1, OnClientVGUIMenuRequired, GetClientUserId(client));
+	return Plugin_Handled;
+}
+
+public Action OnClientVGUIMenuRequired(Handle timer, any userid)
+{
+	int client = GetClientOfUserId(userid);
 	
+	if(client == 0)
+		return Plugin_Continue;
+		
 	char url[1024];
+
 	Call_StartForward(g_hOnGetClientVGUIUrl);
 	Call_PushCell(client);
 	Call_PushStringEx(url, sizeof(url), SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
 	Call_Finish();
-	
+		
 	SendClientVGUIMenu(client, url);
-	return Plugin_Handled;
+	return Plugin_Continue;
 }
 
 stock void SendClientVGUIMenu(int client, const char[] url)
