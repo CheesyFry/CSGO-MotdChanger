@@ -4,77 +4,159 @@
 #pragma newdecls required
 
 static Handle g_hOnGetClientVGUIUrl = null;
-static bool s_bClientRequiresVGUIMenu[MAXPLAYERS+1];
+static char g_sTitle[1024];
+static char g_sType[16];
+static char g_sMessage[2048];
 
 public Plugin myinfo =
 {
 	name = "MOTD Changer",
 	author = "Neuro Toxin",
-	description = "Allows plugins to change the MOTD URL",
-	version = "0.0.2",
-	url = ""
+	description = "Provides a forward for plugins to change MOTD URL's",
+	version = "0.0.4",
+	url = "https://github.com/ntoxin66/CSGO-MotdChanger"
+}
+
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
+{
+	RegPluginLibrary("motdchanger");
+	CreateNative("MotdChanger_SendClientMotd", Native_MotdChanger_SendClientMotd);
+	CreateNative("MotdChanger_SetType", Native_MotdChanger_SetType);
+	CreateNative("MotdChanger_SetTitle", Native_MotdChanger_SetTitle);
+	CreateNative("MotdChanger_SetMessage", Native_MotdChanger_SetMessage);
+	return APLRes_Success;
 }
 
 public void OnPluginStart()
 {
 	UserMsg umVGUIMenu = GetUserMessageId("VGUIMenu");
 	if (umVGUIMenu == INVALID_MESSAGE_ID)
-		SetFailState("Your game server doesn't support VGUI menus.");
+		SetFailState("UserMsg `umVGUIMenu` not found!");
+	
 	HookUserMessage(umVGUIMenu, OnVGUIMenu, true);
+	g_hOnGetClientVGUIUrl = CreateGlobalForward("OnGetClientVGUIUrl", ET_Single, Param_Cell, Param_String, Param_String, Param_String);
+}
+
+public Action OnVGUIMenu(UserMsg msg_id, Protobuf msg, const int[] players, int playersNum, bool reliable, bool init)
+{
+	char name[7];
+	msg.ReadString("name", name, sizeof(name));
 	
-	g_hOnGetClientVGUIUrl = CreateGlobalForward("OnGetClientVGUIUrl", ET_Single, Param_Cell, Param_String);
-}
-
-public bool OnClientConnect(int client, char[] rejectmsg, int maxlen)
-{
-	s_bClientRequiresVGUIMenu[client] = true;
-	return true;
-}
-
-public Action OnVGUIMenu(UserMsg msg_id, Handle bf, const int[] players, int playersNum, bool reliable, bool init)
-{
 	int client = players[0];
+	PrintToConsole(client, "> OnVGUIMenu(name='%s', show=%d)", name, msg.ReadBool("show"));
 	
-	if (!IsClientInGame(client))
+	if (!StrEqual(name, "info"))
 		return Plugin_Continue;
 	
-	if (IsFakeClient(client))
-		return Plugin_Continue;
+	Protobuf subkey[3]; int subkeylookup[3];
+	for (int i = 0; i < 3; i++)
+	{
+		subkey[i] = msg.ReadRepeatedMessage("subkeys", i);
+		subkey[i].ReadString("name", name, sizeof(name));
+		//PrintToConsole(client, "> OnVGUIMenu.subkeys[%d].name='%s'", i, name);
 		
-	if (!s_bClientRequiresVGUIMenu[client])
-		return Plugin_Continue;
+		if (StrEqual(name, "title"))
+		{
+			subkeylookup[0] = i;
+			subkey[i].ReadString("str", g_sTitle, sizeof(g_sTitle));
+			//PrintToConsole(client, "> OnVGUIMenu.subkeys[%d].str='%s'", i, g_sTitle);
+		}
+		else if (StrEqual(name, "type"))
+		{
+			subkeylookup[1] = i;
+			subkey[i].ReadString("str", g_sType, sizeof(g_sType));
+			//PrintToConsole(client, "> OnVGUIMenu.subkeys[%d].str='%s'", i, g_sType);
+		}
+		else if (StrEqual(name, "msg"))
+		{
+			subkeylookup[2] = i;
+			subkey[i].ReadString("str", g_sMessage, sizeof(g_sMessage));
+			//PrintToConsole(client, "> OnVGUIMenu.subkeys[%d].str='%s'", i, g_sMessage);
+		}
+	}
 	
-	s_bClientRequiresVGUIMenu[client] = false;
-	CreateTimer(0.1, OnClientVGUIMenuRequired, GetClientUserId(client));
-	return Plugin_Handled;
-}
-
-public Action OnClientVGUIMenuRequired(Handle timer, any userid)
-{
-	int client = GetClientOfUserId(userid);
+	if (StrEqual(g_sType, "1") && StrEqual(g_sMessage, "motd"))
+	{
+		Action result;
+		Call_StartForward(g_hOnGetClientVGUIUrl);
+		Call_PushCell(client);
+		Call_PushString(g_sTitle);
+		Call_PushString(g_sType);
+		Call_PushString(g_sMessage);
+		Call_Finish(result);
+		
+		if (result == Plugin_Stop)
+		{
+			PrintToConsole(client, "> MOTD BLOCKED");
+			msg.SetBool("show", false);
+			delete subkey[0];
+			delete subkey[1];
+			delete subkey[2];
+			return Plugin_Continue;
+		}
+		
+		if (result == Plugin_Changed)
+		{
+			subkey[subkeylookup[0]].SetString("str", g_sTitle);
+			subkey[subkeylookup[1]].SetString("str", g_sType);
+			subkey[subkeylookup[2]].SetString("str", g_sMessage);
+			
+			//PrintToConsole(client, "> OnVGUIMenu.title='%s'", g_sTitle);
+			PrintToConsole(client, "> OnVGUIMenu.type='%s'", g_sType);
+			PrintToConsole(client, "> OnVGUIMenu.msg='%s'", g_sMessage);
+		}
+	}
 	
-	if(client == 0)
-		return Plugin_Continue;
-		
-	char url[1024];
-
-	Call_StartForward(g_hOnGetClientVGUIUrl);
-	Call_PushCell(client);
-	Call_PushStringEx(url, sizeof(url), SM_PARAM_STRING_COPY, SM_PARAM_COPYBACK);
-	Call_Finish();
-		
-	SendClientVGUIMenu(client, url);
+	delete subkey[0];
+	delete subkey[1];
+	delete subkey[2];
 	return Plugin_Continue;
 }
 
-stock void SendClientVGUIMenu(int client, const char[] url)
+public int Native_MotdChanger_SetTitle(Handle plugin, int params)
 {
-	Handle kv = CreateKeyValues("data");
-	KvSetNum(kv, "cmd", 5);
-	KvSetString(kv, "msg", url);
-	KvSetString(kv, "title", "MOTDgd AD");
-	KvSetNum(kv, "type", MOTDPANEL_TYPE_URL);
+	GetNativeString(1, g_sTitle, sizeof(g_sTitle));
+	return 1;
+}
+
+public int Native_MotdChanger_SetType(Handle plugin, int params)
+{
+	GetNativeString(1, g_sType, sizeof(g_sType));
+	return 1;
+}
+
+public int Native_MotdChanger_SetMessage(Handle plugin, int params)
+{
+	GetNativeString(1, g_sMessage, sizeof(g_sMessage));
+	return 1;
+}
+
+public int Native_MotdChanger_SendClientMotd(Handle plugin, int params)
+{
+	int client = GetNativeCell(1);
+	GetNativeString(2, g_sTitle, sizeof(g_sTitle));
+	GetNativeString(3, g_sType, sizeof(g_sType));
+	GetNativeString(4, g_sMessage, sizeof(g_sMessage));
 	
-	ShowVGUIPanel(client, "info", kv);
-	CloseHandle(kv);
+	Protobuf vguimenu = view_as<Protobuf>(StartMessageOne("VGUIMenu", client));
+	
+	vguimenu.SetString("name", "info");
+	vguimenu.SetBool("show", true);
+	
+	Protobuf subkey;
+	
+	subkey = vguimenu.AddMessage("subkeys");
+	subkey.SetString("name", "title");
+	subkey.SetString("str", g_sTitle);
+	
+	subkey = vguimenu.AddMessage("subkeys");
+	subkey.SetString("name", "type");
+	subkey.SetString("str", g_sType);
+	
+	subkey = vguimenu.AddMessage("subkeys");
+	subkey.SetString("name", "msg");
+	subkey.SetString("str", g_sMessage);
+	
+	EndMessage();
+	delete vguimenu;
 }
