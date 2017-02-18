@@ -10,11 +10,16 @@ native void MotdChanger_SetTitle(const char[] value);
 native void MotdChanger_SetType(const char[] value);
 native void MotdChanger_SetMessage(const char[] value);
 
+enum MotdChanger
+{
+	motd, Motd, MotD, MOTD
+}
+
 methodmap MotdChanger
 {
 	public MotdChanger()
 	{
-		return view_as<int>(0);
+		return motd;
 	}
 	
 	public static void SetTitle(const char[] value)
@@ -30,6 +35,11 @@ methodmap MotdChanger
 	public static void SetMessage(const char[] value)
 	{
 		MotdChanger_SetMessage(value);
+	}
+	
+	public static void SendClient( int client, const char[] title, const char[] type, const char[] msg)
+	{
+		MotdChanger_SendClientMotd( client, title, type, msg );
 	}
 }
 
